@@ -1,6 +1,6 @@
 """Tests for GBMSimulator."""
 
-from app.market.seed_prices import SEED_PRICES
+from app.market.seed_prices import SEED_PRICES, TICKER_PARAMS
 from app.market.simulator import GBMSimulator
 
 
@@ -129,3 +129,27 @@ class TestGBMSimulator:
         if '.' in price_str:
             decimal_part = price_str.split('.')[1]
             assert len(decimal_part) <= 2
+
+    def test_full_default_watchlist_cholesky_succeeds(self):
+        """GBMSimulator must initialise and step cleanly for all 10 default tickers.
+
+        This is a regression guard for the Cholesky decomposition: if correlation
+        constants ever make the matrix non-positive-definite, numpy.linalg.cholesky
+        will raise a LinAlgError here.
+        """
+        tickers = list(TICKER_PARAMS.keys())
+        assert len(tickers) == 10  # sanity: still the full default set
+
+        sim = GBMSimulator(tickers=tickers)
+        assert sim._cholesky is not None  # 10 tickers → matrix must exist
+
+        result = sim.step()
+        assert set(result.keys()) == set(tickers)
+        assert all(v > 0 for v in result.values())
+
+    def test_get_tickers_returns_copy(self):
+        """get_tickers() must return a copy so callers can't mutate internal state."""
+        sim = GBMSimulator(tickers=["AAPL", "GOOGL"])
+        tickers = sim.get_tickers()
+        tickers.clear()
+        assert len(sim.get_tickers()) == 2
