@@ -1,5 +1,7 @@
 """Tests for PriceCache."""
 
+import threading
+
 from app.market.cache import PriceCache
 
 
@@ -101,3 +103,40 @@ class TestPriceCache:
         cache = PriceCache()
         update = cache.update("AAPL", 190.12345)
         assert update.price == 190.12
+
+    def test_thread_safety_concurrent_writes(self):
+        """Concurrent writes from multiple threads must not corrupt the cache or version."""
+        cache = PriceCache()
+        errors = []
+        n_threads = 20
+        updates_per_thread = 50
+
+        def writer(ticker: str) -> None:
+            try:
+                for i in range(updates_per_thread):
+                    cache.update(ticker, 100.0 + i)
+            except Exception as e:
+                errors.append(e)
+
+        tickers = [f"T{i}" for i in range(n_threads)]
+        threads = [threading.Thread(target=writer, args=(t,)) for t in tickers]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert not errors, f"Exceptions in writer threads: {errors}"
+        # Each thread wrote updates_per_thread times; version must reflect all writes
+        assert cache.version == n_threads * updates_per_thread
+        # All tickers must be present
+        all_prices = cache.get_all()
+        assert set(all_prices.keys()) == set(tickers)
+
+    def test_version_is_consistent_under_lock(self):
+        """version property must return a value consistent with the lock-protected state."""
+        cache = PriceCache()
+        # The version returned before an update must be strictly less than after
+        v_before = cache.version
+        cache.update("AAPL", 190.00)
+        v_after = cache.version
+        assert v_after == v_before + 1

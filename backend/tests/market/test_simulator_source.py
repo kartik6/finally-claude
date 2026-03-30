@@ -136,3 +136,38 @@ class TestSimulatorDataSource:
         # Just verify it starts and stops cleanly
         await asyncio.sleep(0.2)
         await source.stop()
+
+    async def test_add_ticker_normalises_to_uppercase(self):
+        """add_ticker must normalise lowercase input to uppercase."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start([])
+
+        await source.add_ticker("aapl")
+        assert "AAPL" in source.get_tickers()
+        assert cache.get("AAPL") is not None
+
+        await source.stop()
+
+    async def test_add_ticker_strips_whitespace(self):
+        """add_ticker must strip leading/trailing whitespace."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start([])
+
+        await source.add_ticker("  AAPL  ")
+        assert "AAPL" in source.get_tickers()
+
+        await source.stop()
+
+    async def test_remove_ticker_normalises_to_uppercase(self):
+        """remove_ticker must normalise lowercase input to uppercase."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start(["AAPL"])
+
+        await source.remove_ticker("aapl")
+        assert "AAPL" not in source.get_tickers()
+        assert cache.get("AAPL") is None
+
+        await source.stop()
