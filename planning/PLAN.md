@@ -130,6 +130,9 @@ MASSIVE_API_KEY=
 
 # Optional: Set to "true" for deterministic mock LLM responses (testing)
 LLM_MOCK=false
+
+# Optional: Override the LLM model used for chat (default shown below)
+LLM_MODEL=openrouter/openai/gpt-oss-120b
 ```
 
 ### Behavior
@@ -137,6 +140,7 @@ LLM_MOCK=false
 - If `MASSIVE_API_KEY` is set and non-empty → backend uses Massive REST API for market data
 - If `MASSIVE_API_KEY` is absent or empty → backend uses the built-in market simulator
 - If `LLM_MOCK=true` → backend returns deterministic mock LLM responses (for E2E tests)
+- `LLM_MODEL` can be overridden to swap in a different OpenRouter model without code changes
 - The backend reads `.env` from the project root (mounted into the container or read via docker `--env-file`)
 
 ---
@@ -175,7 +179,7 @@ Both the simulator and the Massive client implement the same abstract interface.
 
 - Endpoint: `GET /api/stream/prices`
 - Long-lived SSE connection; client uses native `EventSource` API
-- Server pushes price updates for all tickers known to the system at a regular cadence (~500ms) — in the single-user model this is equivalent to the user's watchlist
+- Server pushes price updates for the **current user's watchlist** tickers at a regular cadence (~500ms). When a ticker is removed from the watchlist, the background task stops including it in the next push cycle.
 - Each SSE event contains ticker, price, previous price, timestamp, and change direction
 - Client handles reconnection automatically (EventSource has built-in retry)
 
@@ -193,7 +197,7 @@ The backend checks for the SQLite database on startup (or first request). If the
 
 ### Schema
 
-All tables include a `user_id` column defaulting to `"default"`. This is hardcoded for now (single-user) but enables future multi-user support without schema migration.
+All tables include a `user_id` column with a SQL-level `DEFAULT 'default'`. This is enforced in the schema DDL (not just application code), so inserts that omit `user_id` always land on the single default user. This is hardcoded for now (single-user) but enables future multi-user support without schema migration.
 
 **users_profile** — User state (cash balance)
 - `id` TEXT PRIMARY KEY (default: `"default"`)
@@ -225,7 +229,7 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 - `price` REAL
 - `executed_at` TEXT (ISO timestamp)
 
-**portfolio_snapshots** — Portfolio value over time (for P&L chart). Recorded every 30 seconds by a background task, and immediately after each trade execution.
+**portfolio_snapshots** — Portfolio value over time (for P&L chart). Recorded every 30 seconds by a background task, and immediately after each trade execution. Rapid consecutive trades (multiple trades within a 5-second window) are debounced to a single snapshot to avoid write contention.
 - `id` TEXT PRIMARY KEY (UUID)
 - `user_id` TEXT (default: `"default"`)
 - `total_value` REAL
@@ -236,7 +240,7 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 - `user_id` TEXT (default: `"default"`)
 - `role` TEXT (`"user"` or `"assistant"`)
 - `content` TEXT
-- `actions` TEXT (JSON — trades executed, watchlist changes made; null for user messages)
+- `actions` TEXT (JSON — records the *results* of execution for assistant messages; null for user messages. Shape: `{"trades": [{"ticker": "AAPL", "side": "buy", "quantity": 10, "price": 191.50, "status": "ok"} | {"ticker": "AAPL", "side": "buy", "quantity": 9999, "status": "error", "reason": "insufficient cash"}], "watchlist_changes": [{"ticker": "PYPL", "action": "add", "status": "ok"}]}`)
 - `created_at` TEXT (ISO timestamp)
 
 ### Default Seed Data
@@ -281,7 +285,7 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 
 ## 9. LLM Integration
 
-When writing code to make calls to LLMs, use cerebras-inference skill to use LiteLLM via OpenRouter to the `openrouter/openai/gpt-oss-120b` model with Cerebras as the inference provider. Structured Outputs should be used to interpret the results.
+When writing code to make calls to LLMs, use cerebras-inference skill to use LiteLLM via OpenRouter to the model specified by the `LLM_MODEL` environment variable (default: `openrouter/openai/gpt-oss-120b`) with Cerebras as the inference provider. Structured Outputs should be used to interpret the results.
 
 There is an OPENROUTER_API_KEY in the .env file in the project root.
 
@@ -290,7 +294,7 @@ There is an OPENROUTER_API_KEY in the .env file in the project root.
 When the user sends a chat message, the backend:
 
 1. Loads the user's current portfolio context (cash, positions with P&L, watchlist with live prices, total portfolio value)
-2. Loads recent conversation history from the `chat_messages` table
+2. Loads the most recent **20 messages** from the `chat_messages` table (10 exchanges) as conversation history. This caps token usage and latency regardless of session length.
 3. Constructs a prompt with a system message, portfolio context, conversation history, and the user's new message
 4. Calls the LLM via LiteLLM → OpenRouter, requesting structured output, using the cerebras-inference skill
 5. Parses the complete structured JSON response
@@ -314,9 +318,9 @@ The LLM is instructed to respond with JSON matching this schema:
 }
 ```
 
-- `message` (required): The conversational text shown to the user
-- `trades` (optional): Array of trades to auto-execute. Each trade goes through the same validation as manual trades (sufficient cash for buys, sufficient shares for sells)
-- `watchlist_changes` (optional): Array of watchlist modifications
+- `message` (required): The conversational text shown to the user. If any requested trade fails validation, the failure reason must be included in this field so the user is informed.
+- `trades` (optional): Array of trades to auto-execute. Each trade goes through the same validation as manual trades (sufficient cash for buys, sufficient shares for sells). `side` must be `"buy"` or `"sell"`.
+- `watchlist_changes` (optional): Array of watchlist modifications. `action` must be `"add"` or `"remove"`. These are enforced as enums in the Pydantic model.
 
 ### Auto-Execution
 
@@ -339,7 +343,19 @@ The LLM should be prompted as "FinAlly, an AI trading assistant" with instructio
 
 ### LLM Mock Mode
 
-When `LLM_MOCK=true`, the backend returns deterministic mock responses instead of calling OpenRouter. This enables:
+When `LLM_MOCK=true`, the backend returns the following deterministic mock response instead of calling OpenRouter:
+
+```json
+{
+  "message": "I've reviewed your portfolio. You have $10,000 in cash and no open positions. I'll buy 5 shares of AAPL to get you started.",
+  "trades": [
+    {"ticker": "AAPL", "side": "buy", "quantity": 5}
+  ],
+  "watchlist_changes": []
+}
+```
+
+This fixed response exercises the full auto-execution path (trade validation, portfolio update, snapshot) and is stable across all E2E test runs. This enables:
 - Fast, free, reproducible E2E tests
 - Development without an API key
 - CI/CD pipelines
@@ -352,17 +368,18 @@ When `LLM_MOCK=true`, the backend returns deterministic mock responses instead o
 
 The frontend is a single-page application with a dense, terminal-inspired layout. The specific component architecture and layout system is up to the Frontend Engineer, but the UI should include these elements:
 
-- **Watchlist panel** — grid/table of watched tickers with: ticker symbol, current price (flashing green/red on change), daily change %, and a sparkline mini-chart (accumulated from SSE since page load)
+- **Watchlist panel** — grid/table of watched tickers with: ticker symbol, current price (flashing green/red on change), change % since session open (the simulator seed price at backend startup, not a real prior-day close), and a sparkline mini-chart (accumulated from SSE since page load)
 - **Main chart area** — larger chart for the currently selected ticker, with at minimum price over time. Clicking a ticker in the watchlist selects it here.
 - **Portfolio heatmap** — treemap visualization where each rectangle is a position, sized by portfolio weight, colored by P&L (green = profit, red = loss)
 - **P&L chart** — line chart showing total portfolio value over time, using data from `portfolio_snapshots`
 - **Positions table** — tabular view of all positions: ticker, quantity, avg cost, current price, unrealized P&L, % change
-- **Trade bar** — simple input area: ticker field, quantity field, buy button, sell button. Market orders, instant fill.
+- **Trade bar** — simple input area: ticker field, quantity field (fractional shares allowed — any positive decimal), buy button, sell button. Market orders, instant fill.
 - **AI chat panel** — docked/collapsible sidebar. Message input, scrolling conversation history, loading indicator while waiting for LLM response. Trade executions and watchlist changes shown inline as confirmations.
 - **Header** — portfolio total value (updating live), connection status indicator, cash balance
 
 ### Technical Notes
 
+- The frontend is a **purely client-side SPA** (`output: 'export'`). No Next.js API routes, server components, or dynamic route segments — all routing is done client-side or via hash navigation.
 - Use `EventSource` for SSE connection to `/api/stream/prices`
 - Canvas-based charting library preferred (Lightweight Charts or Recharts) for performance
 - Price flash effect: on receiving a new price, briefly apply a CSS class with background color transition, then remove it
@@ -444,7 +461,7 @@ The container is designed to deploy to AWS App Runner, Render, or any container 
 
 **Infrastructure**: A separate `docker-compose.test.yml` in `test/` that spins up the app container plus a Playwright container. This keeps browser dependencies out of the production image.
 
-**Environment**: Tests run with `LLM_MOCK=true` by default for speed and determinism.
+**Environment**: Tests run with `LLM_MOCK=true` by default for speed and determinism. The test compose file mounts an ephemeral anonymous volume (not the named `finally-data` volume) so each `docker compose up` for tests starts with a fresh, seeded database and test runs do not interfere with each other or the development database.
 
 **Key Scenarios**:
 - Fresh start: default watchlist appears, $10k balance shown, prices are streaming
