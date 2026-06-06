@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# FinAlly project
+*.pyc
+*.pyo
+db/finally.db
+frontend/.next/
+frontend/out/
+frontend/node_modules/

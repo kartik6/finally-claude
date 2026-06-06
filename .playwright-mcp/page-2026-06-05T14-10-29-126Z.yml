@@ -1,0 +1,96 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: FinAlly
+        - generic [ref=e6]: AI Trading Workstation
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - generic [ref=e9]: Total Value
+          - generic [ref=e10]: $0.00
+        - generic [ref=e11]:
+          - generic [ref=e12]: Cash
+          - generic [ref=e13]: $0.00
+        - generic "Disconnected" [ref=e14]:
+          - generic [ref=e16]: Disconnected
+    - main [ref=e17]:
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - heading "Watchlist" [level=2] [ref=e21]
+          - generic [ref=e22]: "0"
+        - table [ref=e24]:
+          - rowgroup [ref=e25]:
+            - row "Symbol Price Chg % Trend" [ref=e26]:
+              - columnheader "Symbol" [ref=e27]
+              - columnheader "Price" [ref=e28]
+              - columnheader "Chg %" [ref=e29]
+              - columnheader "Trend" [ref=e30]
+              - columnheader [ref=e31]
+          - rowgroup [ref=e32]:
+            - row "No tickers. Add one below." [ref=e33]:
+              - cell "No tickers. Add one below." [ref=e34]
+        - generic [ref=e37]:
+          - textbox "Add ticker" [ref=e38]:
+            - /placeholder: Add ticker…
+          - button "Add" [disabled] [ref=e39]
+      - generic [ref=e40]:
+        - generic [ref=e42]:
+          - heading "—" [level=2] [ref=e44]
+          - generic [ref=e46]: Select a ticker from the watchlist
+        - generic [ref=e48]:
+          - heading "Allocation" [level=2] [ref=e50]
+          - generic [ref=e52]: No positions to display.
+      - generic [ref=e53]:
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - generic [ref=e56]: Total Value
+            - generic [ref=e57]: $0.00
+          - generic [ref=e58]:
+            - generic [ref=e59]: Unrealized P&L
+            - generic [ref=e60]: +$0.00
+          - generic [ref=e61]:
+            - generic [ref=e62]: Cash
+            - generic [ref=e63]: $0.00
+        - generic [ref=e65]:
+          - heading "Portfolio Value" [level=2] [ref=e67]
+          - generic [ref=e69]: Collecting data…
+        - generic [ref=e71]:
+          - heading "Positions" [level=2] [ref=e73]
+          - table [ref=e75]:
+            - rowgroup [ref=e76]:
+              - row "Ticker Qty Avg Last P&L P&L %" [ref=e77]:
+                - columnheader "Ticker" [ref=e78]
+                - columnheader "Qty" [ref=e79]
+                - columnheader "Avg" [ref=e80]
+                - columnheader "Last" [ref=e81]
+                - columnheader "P&L" [ref=e82]
+                - columnheader "P&L %" [ref=e83]
+            - rowgroup [ref=e84]:
+              - row "No open positions." [ref=e85]:
+                - cell "No open positions." [ref=e86]
+            - rowgroup [ref=e87]:
+              - row "Cash $—" [ref=e88]:
+                - cell "Cash" [ref=e89]
+                - cell "$—" [ref=e90]
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: Ticker
+            - textbox "Trade ticker" [ref=e95]:
+              - /placeholder: AAPL
+          - generic [ref=e96]:
+            - generic [ref=e97]: Quantity
+            - spinbutton "Trade quantity" [ref=e98]
+          - button "Buy" [ref=e99]
+          - button "Sell" [ref=e100]
+      - generic [ref=e101]:
+        - button "Collapse chat" [ref=e102]:
+          - generic [ref=e103]: FinAlly Assistant
+          - generic [ref=e104]: ▸
+        - generic [ref=e106]:
+          - heading "FinAlly Assistant" [level=2] [ref=e109]
+          - paragraph [ref=e111]: Ask me to analyze your portfolio, suggest trades, or manage your watchlist.
+          - generic [ref=e112]:
+            - textbox "Chat message" [ref=e113]:
+              - /placeholder: Message FinAlly…
+            - button "Send" [disabled] [ref=e114]
+  - alert [ref=e115]
